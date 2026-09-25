@@ -1,0 +1,8 @@
+{
+  "workload": "synthetic-lifecycle",
+  "statuses": {"demo": "0"},
+  "run_error": null,
+  "semantic_state_ids": ["life-a", "life-b"],
+  "stimuli": [],
+  "violations": []
+}

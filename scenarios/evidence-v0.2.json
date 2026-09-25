@@ -1,0 +1,9 @@
+[
+  {"path":"examples/public-corpus/lifecycle","document":"summary.json","expected":{"workload":"synthetic-lifecycle","run_error":null,"violations":[]}},
+  {"path":"examples/public-corpus/nontermination","document":"summary.json","expected":{"workload":"synthetic-nontermination","run_error":"TimeoutError: synthetic bounded deadline","violations":[]}},
+  {"path":"examples/public-corpus/order-ab","document":"summary.json","expected":{"workload":"synthetic-order","statuses":{"demo":"0"},"violations":[]}},
+  {"path":"examples/public-corpus/order-ba","document":"summary.json","expected":{"workload":"synthetic-order","statuses":{"demo":"1"},"violations":[]}},
+  {"path":"examples/public-corpus/alias-a","document":"summary.json","expected":{"workload":"synthetic-alias","statuses":{"demo":"0"},"violations":[]}},
+  {"path":"examples/public-corpus/alias-b","document":"summary.json","expected":{"workload":"synthetic-alias","statuses":{"demo":"0"},"violations":[]}},
+  {"path":"examples/public-corpus/reset","document":"summary.json","expected":{"workload":"synthetic-reset","run_error":null,"violations":[]}}
+]

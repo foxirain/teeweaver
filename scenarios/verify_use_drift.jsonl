@@ -1,0 +1,2 @@
+{"seq": 1, "op": "object_verify", "actor": "secure-thread-0", "object": "ree-ta-buffer", "generation": 7, "digest": "sha256:trusted"}
+{"seq": 2, "op": "object_consume", "actor": "secure-thread-1", "object": "ree-ta-buffer", "generation": 7, "digest": "sha256:changed", "fault": "mutate-between-check-and-use"}

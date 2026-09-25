@@ -1,0 +1,5 @@
+{"seq": 1, "op": "shm_register", "actor": "ree", "object": "41", "generation": 1, "owner": "session-a"}
+{"seq": 2, "op": "rpc_issue", "actor": "secure-thread-0", "request": "9", "func": 2, "session": "session-a", "generation": 1}
+{"seq": 3, "op": "rpc_reply", "actor": "supplicant-0", "request": "9", "claims_request": "9", "func": 2, "session": "session-a", "generation": 1}
+{"seq": 4, "op": "shm_use", "actor": "secure-thread-0", "object": "41", "generation": 1, "owner": "session-a"}
+{"seq": 5, "op": "shm_release", "actor": "ree", "object": "41", "generation": 1}

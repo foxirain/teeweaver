@@ -1,0 +1,8 @@
+{
+  "workload": "synthetic-order",
+  "statuses": {"demo": "1"},
+  "run_error": null,
+  "semantic_state_ids": ["order-ba"],
+  "stimuli": [],
+  "violations": []
+}

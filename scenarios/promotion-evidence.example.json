@@ -1,0 +1,10 @@
+{
+  "duplicate_triage": false,
+  "minimized_reproducer": false,
+  "negative_control": false,
+  "normal_world_attacker": true,
+  "observer_effect_control": false,
+  "secure_world_security_impact": false,
+  "stock_target_reproduction": false,
+  "supported_configuration": true
+}

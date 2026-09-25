@@ -1,0 +1,9 @@
+include CHANGELOG.md CITATION.cff LICENSE README.md RELEASE_NOTES.md SECURITY.md
+recursive-include docs *
+recursive-include evaluation *.json
+recursive-include examples *.json *.jsonl
+recursive-include instrumentation *.c *.map Makefile README.md
+recursive-include scenarios *.json *.jsonl
+recursive-include tools *.py
+global-exclude __pycache__ *.py[cod] *.so
+

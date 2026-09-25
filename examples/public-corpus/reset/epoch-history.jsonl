@@ -1,0 +1,3 @@
+{"seq":1,"op":"storage_ack","actor":"storage","key":"demo-key","digest":"new"}
+{"seq":2,"op":"reset","actor":"controller","kind":"synthetic-replay"}
+{"seq":3,"op":"storage_observe","actor":"storage","key":"demo-key","digest":"old"}

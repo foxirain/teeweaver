@@ -1,0 +1,4 @@
+{"seq": 1, "op": "shm_register", "actor": "ree", "object": "41", "generation": 1, "owner": "session-a"}
+{"seq": 2, "op": "shm_release", "actor": "ree", "object": "41", "generation": 1}
+{"seq": 3, "op": "shm_register", "actor": "ree", "object": "41", "generation": 2, "owner": "session-b"}
+{"seq": 4, "op": "shm_use", "actor": "secure-thread-0", "object": "41", "generation": 1, "owner": "session-a", "fault": "aba-reuse"}

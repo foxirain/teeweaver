@@ -1,0 +1,8 @@
+{
+  "workload": "synthetic-alias",
+  "statuses": {"demo": "0"},
+  "run_error": null,
+  "semantic_state_ids": ["state-b1", "state-b2", "state-b3"],
+  "stimuli": [],
+  "violations": []
+}

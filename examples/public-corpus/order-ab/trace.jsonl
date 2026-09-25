@@ -1,0 +1,2 @@
+{"seq":1,"op":"rpc_issue","actor":"actor-a","request":"1","func":2}
+{"seq":2,"op":"shm_release","actor":"actor-b","object":"7","generation":1}

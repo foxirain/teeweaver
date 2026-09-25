@@ -1,0 +1,6 @@
+{"seq":1,"op":"ffa_share","actor":"client-a","process":"101","object":"deadbeef00000010","generation":1,"owner":"normal-world-101","receiver":"40001"}
+{"seq":2,"op":"ffa_direct_message","actor":"client-a","process":"101","object":"deadbeef00000010","generation":1,"receiver":"40001","action":42,"ioctl_result":-1,"ioctl_errno":16}
+{"seq":3,"op":"ffa_direct_message","actor":"client-b","process":"202","object":"deadbeef00000010","generation":1,"receiver":"40001","action":42,"ioctl_result":0,"ioctl_errno":0}
+{"seq":4,"op":"ffa_access","actor":"client-b","process":"202","object":"deadbeef00000010","generation":1,"owner":"normal-world-101","receiver":"40001","access":"read"}
+{"seq":5,"op":"ffa_reclaim","actor":"client-a","process":"101","object":"deadbeef00000010","generation":1,"owner":"normal-world-101","receiver":"40001"}
+{"seq":6,"op":"ffa_share","actor":"client-b","process":"202","object":"deadbeef00000010","generation":2,"owner":"normal-world-202","receiver":"40002"}

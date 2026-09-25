@@ -1,0 +1,1 @@
+{"seq":1,"op":"ffa_call_issue","actor":"client-a","process":"101","call":"101:101:message:42:2:0","target":"message","receiver":"40001","action":42,"occurrence":2,"object":"deadbeef00000010","generation":2}

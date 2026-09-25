@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use TEEWeaver in research, please cite this software."
+title: "TEEWeaver: Dynamic Semantic-Element Mining for OP-TEE"
+type: software
+authors:
+  - family-names: Ha
+    given-names: Taegu
+version: 0.2.0-alpha
+date-released: 2026-09-26
+license: BSD-3-Clause
+

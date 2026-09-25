@@ -1,0 +1,6 @@
+{"seq": 1, "op": "rpc_issue", "actor": "secure-thread-0", "request": "9", "func": 2, "session": "session-a"}
+{"seq": 2, "op": "rpc_issue", "actor": "secure-thread-1", "request": "10", "func": 2, "session": "session-b"}
+{"seq": 3, "op": "rpc_reply", "actor": "supplicant-0", "request": "9", "claims_request": "10", "func": 2, "session": "session-a", "fault": "swap-pair"}
+{"seq": 4, "op": "rpc_reply", "actor": "supplicant-1", "request": "10", "claims_request": "9", "func": 2, "session": "session-b", "fault": "swap-pair"}
+{"seq": 5, "op": "rpc_accept", "actor": "secure-thread-0", "request": "9", "func": 2, "session": "session-a"}
+{"seq": 6, "op": "rpc_accept", "actor": "secure-thread-1", "request": "10", "func": 2, "session": "session-b"}

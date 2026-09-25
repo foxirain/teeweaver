@@ -1,0 +1,3 @@
+{"seq": 1, "op": "storage_ack", "actor": "secure-thread-0", "key": "counter", "digest": "sha256:new"}
+{"seq": 2, "op": "reset", "actor": "platform", "fault": "power-cut"}
+{"seq": 3, "op": "storage_observe", "actor": "secure-thread-0", "key": "counter", "digest": "sha256:old"}

@@ -1,0 +1,10 @@
+GLIBC_2.17 {
+	global:
+		ioctl;
+		close;
+		mmap;
+		mmap64;
+		munmap;
+	local:
+		*;
+};

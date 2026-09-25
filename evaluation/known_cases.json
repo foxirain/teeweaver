@@ -1,0 +1,50 @@
+[
+  {
+    "id": "GHSA-f35r-hm2m-p6c3",
+    "cve": null,
+    "surface": "REE-FS return-code propagation",
+    "attacker": "malicious tee-supplicant",
+    "history": ["storage request", "unexpected REE result", "TA panic", "TA restart"],
+    "invariant": "failure-domain containment",
+    "impact": "kept-alive TA state reset; fTPM PCR reset and sealed-data exposure",
+    "fixed": "OP-TEE 4.8.0 / optee_ftpm 4.7.0",
+    "role": "quarantined known-positive regression; never use as a generation seed or report as new",
+    "url": "https://github.com/OP-TEE/optee_os/security/advisories/GHSA-f35r-hm2m-p6c3"
+  },
+  {
+    "id": "GHSA-332c-xr93-849m",
+    "cve": "CVE-2026-40290",
+    "surface": "S-EL1 SPMC FF-A shared-memory teardown",
+    "attacker": "non-secure FF-A caller",
+    "history": ["share/lend traversal", "concurrent relinquish/reclaim", "freed-list dereference"],
+    "invariant": "shared-memory lifetime and serialization",
+    "impact": "secure-world UAF, memory corruption, and possible disclosure",
+    "fixed": "OP-TEE 4.11",
+    "role": "known-positive concurrency benchmark; exclude exact root cause",
+    "url": "https://github.com/OP-TEE/optee_os/security/advisories/GHSA-332c-xr93-849m"
+  },
+  {
+    "id": "GHSA-fhcg-pp56-8v75",
+    "cve": "CVE-2026-44362",
+    "surface": "subkey TA version propagation",
+    "attacker": "Normal World controlling REE-FS TA image",
+    "history": ["load signed subkey chain", "drop subkey version", "rollback database remains at zero", "load older TA"],
+    "invariant": "authenticated metadata continuity and rollback freshness",
+    "impact": "revoked or weaker signed TA downgrade",
+    "fixed": "OP-TEE 4.11",
+    "role": "known-positive authentication/epoch benchmark; exclude exact root cause",
+    "url": "https://github.com/OP-TEE/optee_os/security/advisories/GHSA-fhcg-pp56-8v75"
+  },
+  {
+    "id": "GHSA-p84g-83m7-53p6",
+    "cve": "CVE-2026-71968",
+    "surface": "concurrent user-TA context VM-region teardown",
+    "attacker": "signed TA with TA_FLAG_CONCURRENT plus concurrent sessions",
+    "history": ["open shared TA context", "map/unmap memrefs concurrently", "free vm_region still in use"],
+    "invariant": "context lifetime and serialization",
+    "impact": "S-EL1 kernel UAF and memory corruption",
+    "fixed": "commit 8794043",
+    "role": "known-positive scheduler benchmark; attacker prerequisite is not the primary bounty lane",
+    "url": "https://github.com/advisories/GHSA-p84g-83m7-53p6"
+  }
+]

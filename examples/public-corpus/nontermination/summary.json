@@ -1,0 +1,8 @@
+{
+  "workload": "synthetic-nontermination",
+  "statuses": {},
+  "run_error": "TimeoutError: synthetic bounded deadline",
+  "semantic_state_ids": ["hung-a"],
+  "stimuli": [],
+  "violations": []
+}

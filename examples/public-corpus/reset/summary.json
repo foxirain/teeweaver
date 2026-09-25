@@ -1,0 +1,8 @@
+{
+  "workload": "synthetic-reset",
+  "statuses": {"demo": "0"},
+  "run_error": null,
+  "semantic_state_ids": ["epoch-before", "epoch-after"],
+  "stimuli": [],
+  "violations": []
+}
