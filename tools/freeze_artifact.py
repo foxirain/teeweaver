@@ -16,11 +16,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Freeze or verify an advisory-blind TEEWeaver artifact"
     )
-    parser.add_argument("--label", default="v0.2.0-alpha-public-freeze")
+    parser.add_argument("--label", default="v0.3.0-alpha-development-freeze")
     parser.add_argument(
         "--output",
         type=Path,
-        default=PROJECT / "artifacts/freeze-v0.2.0-alpha.json",
+        default=PROJECT / "artifacts/freeze-v0.3.0-alpha.json",
     )
     parser.add_argument(
         "--verify",

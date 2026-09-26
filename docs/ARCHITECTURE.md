@@ -21,9 +21,9 @@ client workers ---- Linux TEE driver ---- SMC ---- OP-TEE threads
 
         multi-run history corpus
                  |
-       dynamic relation extraction
+       semantic feature + relation extraction
                  |
-      AI-consumable element graph
+      novelty queue + AI-consumable graph
 
 FF-A actor -------- arm_ffa_user -------- SMC ---- OP-TEE SPMC / stock SPs
    | share / retrieve request / relinquish / reclaim / access probe
@@ -151,11 +151,36 @@ record includes supporting event references, why runtime evidence was needed,
 known alternative explanations, explicit falsifiers, next experiments, and
 root-cause search hints. `not_a_vulnerability` is always true at this layer.
 
+### 7. Semantic discovery engine
+
+The v0.3 layer generalizes beyond the nine named element extractors. It
+profiles object, session, operation, request, call, storage-key, thread, and
+context lifetimes; compares complete histories; and emits a typed graph plus a
+greedy AI follow-up queue. Generic contrast and association miners surface
+same-result/different-history and nearby-history/different-result pairs without
+claiming causality.
+
+The collector can merge Normal-World JSONL with normalized OP-TEE `secure.log`
+records. Each source retains an independent `order_domain`; sequence-sensitive
+miners are partitioned before they see the data. Cross-source identity topology
+is therefore available without treating unrelated file offsets as a global
+clock. Native log rules currently expose loader fallback, SP identity/mapping,
+session/context teardown, panic cleanup, RPC-cookie release, notification
+sleep/wake, and FF-A refcount/resurrection transitions. Explicit `TWTRACE` JSON
+markers extend that vocabulary when a diagnostic Secure-World build is
+appropriate.
+
+A separate streaming novelty index runs inside fault campaigns. It keeps
+feature support and a bounded set of representative profiles while processing
+one run at a time. Raw executions that duplicate retained semantic coverage
+can be omitted from the active corpus without being misclassified as safe or
+non-vulnerable. See `docs/DISCOVERY_ENGINE.md`.
+
 ## Instrumentation levels
 
 | Level | Target modifications | Purpose | Evidence strength |
 |---|---|---|---|
-| L0 | None in Secure World; malicious supplicant interposer only | Real attacker-visible RPC/SHM behavior | Strongest discovery/reproduction tier |
+| L0 | None in Secure World; malicious supplicant interposer plus existing target logs | Real attacker-visible RPC/SHM behavior and native Secure-World diagnostics | Strongest discovery/reproduction tier; native log presence depends on build configuration |
 | L1 | Linux tracepoints/kprobes or driver logging | Recover request identities and timings | Strong diagnosis; repeat at L0 before reporting |
 | L2 | OP-TEE trace build or test TA emits semantic markers | Observe verify/use, owner, and session context | Oracle development and root cause, not final exploit proof alone |
 | L3 | QEMU plugin/watchpoint/record-replay | Memory generation, world switches, deterministic replay | Strong temporal evidence; validate on stock binary afterward |
@@ -183,7 +208,9 @@ The framework must always record which level produced a result.
    generation, receiver references, rejected early reclaim, balanced reclaim,
    and stale retrieve are checked. Stable multi-actor scheduling and opaque
    SP-to-SP internal memory transactions remain partial.
-6. **Coverage guidance:** corpus queue keyed by semantic state plus optional
-   secure-world edge coverage.
+6. **Coverage guidance (implemented for semantic discovery):** weighted
+   marginal feature coverage, control-anchored novelty, generic contrasts, and
+   a resumable streaming corpus index. Optional secure-world edge coverage
+   remains a separate feedback input.
 7. **Evaluation:** seeded mutants, known historical fixes, equal-budget
    baselines, new findings, and unmodified-target confirmation.

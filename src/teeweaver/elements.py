@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from .events import Event
+from .secure_trace import read_secure_log
 from .trace import read_jsonl
 
 
@@ -105,7 +106,9 @@ def _event_ref(run: RunHistory, event: Event, **extra: Any) -> dict[str, Any]:
         "actor": event.actor,
     }
     for key in ("process", "object", "generation", "receiver", "action",
-                "func", "ioctl_result", "ioctl_errno", "call", "fault"):
+                "func", "ioctl_result", "ioctl_errno", "call", "fault",
+                "source", "order_domain", "source_line", "trace_rule",
+                "trace_confidence"):
         if event.get(key) is not None:
             value[key] = event.get(key)
     value.update(extra)
@@ -533,23 +536,49 @@ def mine_state_aliases(runs: Sequence[RunHistory]) -> list[Element]:
     return [item for _, item in sorted(candidates, key=lambda x: (x[0], x[1].element_id))[:8]]
 
 
+def _split_order_domains(runs: Sequence[RunHistory]) -> list[RunHistory]:
+    """Split histories for miners that depend on a trustworthy total order."""
+
+    split: list[RunHistory] = []
+    for run in runs:
+        domains: dict[str, list[Event]] = defaultdict(list)
+        for event in run.events:
+            domains[str(event.get("order_domain", "default"))].append(event)
+        for domain, events in sorted(domains.items()):
+            split.append(RunHistory(
+                run.label, run.role, run.group, f"{run.path}#{domain}",
+                tuple(events), run.summary,
+            ))
+    return split
+
+
 def mine_elements(runs: Sequence[RunHistory]) -> list[Element]:
-    miners = (
+    unordered_miners = (
         mine_hidden_global_resources,
-        mine_non_commutative_pairs,
-        mine_failure_residue,
         mine_ownership_transfer,
         mine_aba_cycles,
+        mine_state_aliases,
+    )
+    ordered_miners = (
+        mine_non_commutative_pairs,
+        mine_failure_residue,
         mine_serialization_domains,
         mine_reset_survivors,
         mine_non_terminating_transitions,
-        mine_state_aliases,
     )
-    elements = [element for miner in miners for element in miner(runs)]
+    ordered_runs = _split_order_domains(runs)
+    elements = [
+        element for miner in unordered_miners for element in miner(runs)
+    ]
+    elements.extend(
+        element for miner in ordered_miners for element in miner(ordered_runs)
+    )
     return sorted(elements, key=lambda item: (-item.score, item.kind, item.element_id))
 
 
-def _load_one(project: Path, record: Mapping[str, Any]) -> list[RunHistory]:
+def _load_one(
+    project: Path, record: Mapping[str, Any], *, secure_logs: bool = False,
+) -> list[RunHistory]:
     relative = Path(str(record["path"]))
     path = (project / relative).resolve()
     if project not in path.parents and path != project:
@@ -563,12 +592,17 @@ def _load_one(project: Path, record: Mapping[str, Any]) -> list[RunHistory]:
         for summary_path in sorted(path.glob("*/summary.json")):
             child = summary_path.parent
             child_role = "control" if child.name.startswith("baseline") else role
-            histories.extend(_load_one(project, {
+            child_record: dict[str, Any] = {
                 "path": child.relative_to(project).as_posix(),
                 "label": f"{label}/{child.name}",
                 "role": child_role,
                 "group": group,
-            }))
+            }
+            if "secure_log" in record:
+                child_record["secure_log"] = record["secure_log"]
+            histories.extend(_load_one(
+                project, child_record, secure_logs=secure_logs,
+            ))
         return histories
     if path.is_file():
         trace_path = path
@@ -579,28 +613,73 @@ def _load_one(project: Path, record: Mapping[str, Any]) -> list[RunHistory]:
     if not trace_path.is_file():
         raise ValueError(f"missing corpus trace: {trace_path}")
     summary_path = directory / str(record.get("summary", "summary.json"))
-    summary: Mapping[str, Any] = {}
+    summary: dict[str, Any] = {}
     if summary_path.is_file():
         loaded = json.loads(summary_path.read_text(encoding="utf-8"))
         if isinstance(loaded, Mapping):
-            summary = loaded
+            summary = dict(loaded)
+    normal_events = []
+    for event in read_jsonl(trace_path):
+        attrs = dict(event.attrs)
+        attrs.setdefault("source", "normal-jsonl")
+        attrs.setdefault("order_domain", "normal-jsonl")
+        normal_events.append(Event(event.seq, event.op, event.actor, attrs))
+
+    secure_setting = record.get("secure_log")
+    secure_path: Path | None = None
+    if secure_setting is not False and (secure_logs or secure_setting is not None):
+        if isinstance(secure_setting, str):
+            secure_path = (directory / secure_setting).resolve()
+            if project not in secure_path.parents and secure_path != project:
+                raise ValueError(
+                    f"secure log path escapes project: {secure_setting}"
+                )
+        else:
+            secure_path = directory / "secure.log"
+    secure_events: list[Event] = []
+    if secure_path is not None and secure_path.is_file():
+        parsed, stats = read_secure_log(secure_path)
+        secure_events.extend(parsed)
+        summary["secure_trace"] = stats.as_dict()
+    elif secure_setting is True or isinstance(secure_setting, str):
+        raise ValueError(f"missing secure log: {secure_path}")
+
+    merged = []
+    for event in (*normal_events, *secure_events):
+        attrs = dict(event.attrs)
+        attrs.setdefault("source_seq", event.seq)
+        merged.append(Event(len(merged) + 1, event.op, event.actor, attrs))
+    summary["trace_sources"] = dict(sorted(Counter(
+        str(event.get("source", "unspecified")) for event in merged
+    ).items()))
     return [RunHistory(
-        label, role, group, relative.as_posix(), tuple(read_jsonl(trace_path)), summary
+        label, role, group, relative.as_posix(), tuple(merged), summary
     )]
 
 
-def load_corpus(project: Path, spec_path: Path) -> list[RunHistory]:
+def iter_corpus(
+    project: Path, spec_path: Path, *, secure_logs: bool = False,
+) -> Iterable[RunHistory]:
     spec = json.loads(spec_path.read_text(encoding="utf-8"))
     if not isinstance(spec, Mapping) or not isinstance(spec.get("records"), list):
         raise ValueError("corpus must contain a records list")
-    runs: list[RunHistory] = []
+    found = False
     for record in spec["records"]:
         if not isinstance(record, Mapping):
             raise ValueError("each corpus record must be an object")
-        runs.extend(_load_one(project.resolve(), record))
-    if not runs:
+        for run in _load_one(
+            project.resolve(), record, secure_logs=secure_logs,
+        ):
+            found = True
+            yield run
+    if not found:
         raise ValueError("corpus resolved to no histories")
-    return runs
+
+
+def load_corpus(
+    project: Path, spec_path: Path, *, secure_logs: bool = False,
+) -> list[RunHistory]:
+    return list(iter_corpus(project, spec_path, secure_logs=secure_logs))
 
 
 def relation_graph(runs: Sequence[RunHistory], elements: Sequence[Element]) -> dict[str, Any]:

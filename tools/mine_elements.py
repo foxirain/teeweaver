@@ -37,12 +37,16 @@ def main() -> int:
         "--minimum-score", type=int, default=0,
         help="omit elements below this score (0-100)",
     )
+    parser.add_argument(
+        "--secure-logs", action="store_true",
+        help="ingest secure.log beside each corpus trace when present",
+    )
     args = parser.parse_args()
     if not 0 <= args.minimum_score <= 100:
         parser.error("--minimum-score must be between 0 and 100")
 
     corpus = args.corpus.resolve()
-    runs = load_corpus(PROJECT, corpus)
+    runs = load_corpus(PROJECT, corpus, secure_logs=args.secure_logs)
     elements = [item for item in mine_elements(runs)
                 if item.score >= args.minimum_score]
     report = build_report(

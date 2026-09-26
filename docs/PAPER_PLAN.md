@@ -104,6 +104,16 @@ Seeded bugs measure sensitivity; they are not counted as new vulnerabilities.
   falsifier and produce a controlled, causal experiment;
 - downstream utility: time and experiments required for an AI agent to turn an
   element into either a rejected hypothesis or a promoted finding.
+- semantic discovery throughput: normalized features and controlled contrasts
+  per target-hour and per CPU-hour;
+- corpus efficiency: retained histories divided by observed histories, with
+  all discarded decisions reproducible from the streaming index;
+- AI query yield: fraction of queued relationships that produce a falsifiable
+  one-change experiment rather than an unbounded source-search task.
+- observation yield: normalized high-signal transitions per target-hour,
+  reported by source and parser rule together with ignored-line coverage;
+- false-order rate: synthetic cross-stream collisions that must remain absent
+  when Normal- and Secure-World logs have no shared clock.
 
 ## Ablations
 
@@ -113,6 +123,9 @@ Seeded bugs measure sensitivity; they are not counted as new vulnerabilities.
 - crash-only oracle versus semantic oracles;
 - random scheduler versus PCT;
 - edge-only versus semantic-only versus combined feedback;
+- Normal-World-only versus native-secure-log-augmented semantic feedback;
+- independent order domains versus an intentionally unsafe concatenated-log
+  total order;
 - with and without deterministic replay.
 
 ## Reproducibility record

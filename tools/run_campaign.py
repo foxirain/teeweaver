@@ -14,6 +14,9 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT / "src"))
 
 from teeweaver.campaign import assess_run, plan_faults, plan_ffa_faults  # noqa: E402
+from teeweaver.discovery import profile_runs  # noqa: E402
+from teeweaver.discovery_index import NoveltyIndex  # noqa: E402
+from teeweaver.elements import RunHistory  # noqa: E402
 from teeweaver.trace import read_jsonl  # noqa: E402
 from teeweaver.workloads import load_workloads  # noqa: E402
 
@@ -72,6 +75,24 @@ def run_experiment(
     return completed.returncode, load_json(output / "summary.json")
 
 
+def profile_result(
+    directory: Path, *, label: str, role: str, group: str,
+    summary: dict[str, Any],
+):
+    trace_path = directory / "trace.jsonl"
+    if not trace_path.is_file():
+        return None
+    history = RunHistory(
+        label=label,
+        role=role,
+        group=group,
+        path=str(directory),
+        events=tuple(read_jsonl(trace_path)),
+        summary=summary,
+    )
+    return profile_runs([history])[0][0]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run an advisory-blind TEEWeaver fault campaign"
@@ -94,6 +115,17 @@ def main() -> int:
         default=3,
         help="clean executions whose state union defines ordinary schedule variance",
     )
+    parser.add_argument(
+        "--input-discovery-index", type=Path,
+        help="optional prior novelty index for cross-campaign corpus retention",
+    )
+    parser.add_argument(
+        "--novelty-stagnation", type=int, default=0,
+        help=(
+            "stop after this many consecutive low-novelty/duplicate runs; "
+            "zero disables early stopping"
+        ),
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -107,9 +139,19 @@ def main() -> int:
         parser.error("--budget must be positive")
     if args.baseline_runs < 1:
         parser.error("--baseline-runs must be positive")
+    if args.novelty_stagnation < 0:
+        parser.error("--novelty-stagnation cannot be negative")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     campaign_dir = (args.output or PROJECT / "results" / f"campaign-{stamp}").resolve()
     campaign_dir.mkdir(parents=True, exist_ok=False)
+
+    if args.input_discovery_index is not None:
+        loaded_index = load_json(args.input_discovery_index.resolve())
+        if loaded_index is None:
+            parser.error("--input-discovery-index does not exist")
+        novelty_index = NoveltyIndex.from_dict(loaded_index)
+    else:
+        novelty_index = NoveltyIndex()
 
     baselines: list[dict[str, Any]] = []
     baseline_dirs: list[Path] = []
@@ -147,6 +189,19 @@ def main() -> int:
             )
             return 2
         baselines.append(baseline_run)
+
+        profile = profile_result(
+            baseline_dir,
+            label=f"{campaign_dir.name}/{baseline_dir.name}",
+            role="control",
+            group=args.workload,
+            summary=baseline_run,
+        )
+        if profile is not None:
+            novelty_index.ingest(profile)
+            write_json(
+                campaign_dir / "discovery-index.json", novelty_index.as_dict()
+            )
 
     baseline_violations = [item.get("violations", []) for item in baselines]
     if any(baseline_violations):
@@ -211,6 +266,8 @@ def main() -> int:
     write_json(campaign_dir / "plan.json", plan_record)
 
     results: list[dict[str, Any]] = []
+    stagnant_runs = 0
+    stopped_early = False
     for index, plan in enumerate(plans, 1):
         run_dir = campaign_dir / f"run-{index:03d}"
         print(f"[{index}/{len(plans)}] {plan.rule}", flush=True)
@@ -233,9 +290,39 @@ def main() -> int:
             "stimulus_count": len(observed.get("stimuli", ())) if observed else None,
             "violation_count": len(observed.get("violations", ())) if observed else None,
         }
+        if observed is not None:
+            profile = profile_result(
+                run_dir,
+                label=f"{campaign_dir.name}/{run_dir.name}",
+                role="treatment",
+                group=args.workload,
+                summary=observed,
+            )
+            if profile is not None:
+                decision = novelty_index.ingest(profile)
+                result["discovery"] = decision.as_dict()
+                write_json(run_dir / "discovery-decision.json", decision.as_dict())
+                write_json(
+                    campaign_dir / "discovery-index.json", novelty_index.as_dict()
+                )
+                if decision.disposition.startswith("discard-"):
+                    stagnant_runs += 1
+                else:
+                    stagnant_runs = 0
         results.append(result)
         write_json(run_dir / "assessment.json", result)
         print(f"    => {assessment.classification}", flush=True)
+        if (
+            args.novelty_stagnation
+            and stagnant_runs >= args.novelty_stagnation
+        ):
+            print(
+                f"semantic discovery saturated for {stagnant_runs} consecutive "
+                "runs; stopping by --novelty-stagnation",
+                flush=True,
+            )
+            stopped_early = True
+            break
 
     counts: dict[str, int] = {}
     for item in results:
@@ -243,10 +330,11 @@ def main() -> int:
         counts[classification] = counts.get(classification, 0) + 1
     campaign = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "complete",
+        "status": "complete-early-novelty-saturation" if stopped_early else "complete",
         "workload": args.workload,
         "seed": args.seed,
         "budget": args.budget,
+        "executed": len(results),
         "baseline": {
             "result_dirs": [path.name for path in baseline_dirs],
             "events_per_run": [item.get("events") for item in baselines],
@@ -254,8 +342,16 @@ def main() -> int:
             "statuses": baseline.get("statuses"),
         },
         "classification_counts": counts,
+        "discovery": {
+            "observed_runs": novelty_index.observed_runs,
+            "retained_runs": len(novelty_index.retained_profiles),
+            "index": "discovery-index.json",
+            "early_stop_threshold": args.novelty_stagnation,
+            "stopped_early": stopped_early,
+        },
         "results": results,
     }
+    write_json(campaign_dir / "discovery-index.json", novelty_index.as_dict())
     write_json(campaign_dir / "campaign.json", campaign)
     print(campaign_dir, flush=True)
     return 1 if counts.get("violation-candidate", 0) else 0

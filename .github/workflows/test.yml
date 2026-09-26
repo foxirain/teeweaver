@@ -19,12 +19,24 @@ jobs:
         run: python3 -m unittest discover -s tests -v
       - name: Compile Python sources
         run: python3 -m compileall -q src tools tests
+      - name: Build and smoke-test distribution
+        run: |
+          python3 -m pip install build
+          python3 -m build
+          python3 -m pip install --force-reinstall --no-deps dist/*.whl
+          teeweaver --help
+          python3 -c 'import teeweaver; assert teeweaver.__version__ == "0.3.0a1"'
       - name: Run public element-mining demo
         run: python3 tools/mine_elements.py
+      - name: Run semantic discovery and streaming index demos
+        run: |
+          python3 tools/discover_corpus.py --budget 7
+          python3 tools/update_discovery_index.py
+          python3 tools/query_discovery.py artifacts/discovery-v0.3.json \
+            --rank 1 --output artifacts/ai-context-v0.3.json
       - name: Validate public evidence manifest
         run: python3 tools/build_evidence_manifest.py
       - name: Freeze and verify public source
         run: |
           python3 tools/freeze_artifact.py
-          python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.2.0-alpha.json
-
+          python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.3.0-alpha.json

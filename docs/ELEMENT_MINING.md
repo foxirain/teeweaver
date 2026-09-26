@@ -1,5 +1,11 @@
 # Dynamic element mining
 
+This v0.2 layer remains supported. The v0.3 discovery engine in
+`docs/DISCOVERY_ENGINE.md` consumes the same histories, retains these named
+elements, and adds identity-independent semantic features, generic contrasts,
+an online novelty index, and an AI experiment contract. Neither layer issues a
+vulnerability verdict.
+
 ## Purpose
 
 The v0.2 miner produces reusable evidence for an AI researcher. It does not

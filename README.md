@@ -26,6 +26,25 @@ ownership transfer, ABA reuse, serialization, reset persistence,
 nontermination, and state aliasing. Each element carries caveats, falsifiers,
 and the next experiments needed to promote or reject it.
 
+Version 0.3 alpha turns those artifacts into a discovery engine rather than a
+vulnerability validator. It extracts identity-independent
+semantic features, ranks histories by marginal relationship coverage, mines
+generic cross-run contrasts and associations, and maintains a streaming corpus
+index during QEMU campaigns. Controls anchor ordinary variance but do not
+occupy the AI follow-up queue. The output includes an explicit experiment
+request contract and bounded focal/comparison deltas. Outcome values are kept
+out of history similarity, and diversity quotas prevent schedule noise from
+monopolizing the follow-up frontier. CWE, CVSS, exploitability, and
+vulnerability verdicts remain the responsibility of downstream AI and human
+review.
+
+The same engine can optionally normalize existing OP-TEE `secure.log` output.
+This adds loader-store fallback, TA/SP mapping, session destruction, panic
+cleanup, notification sleep/wake, RPC-cookie release, FF-A resurrection,
+refcount, and SP identity/lifetime observations without first patching Secure
+World. Normal- and Secure-World streams remain separate ordering domains:
+TEEWeaver never invents a total order between logs that lack a shared clock.
+
 ## Validated status
 
 The current prototype has been exercised end to end on the pinned upstream
@@ -144,6 +163,35 @@ PYTHONPATH=src python3 tools/run_campaign.py \
 
 # Mine all nine element classes from the bundled synthetic public corpus.
 python3 tools/mine_elements.py
+
+# Build a v0.3 AI discovery bundle: novelty queue, generic contrasts,
+# associations, experiment surfaces, and a typed semantic graph.
+python3 tools/discover_corpus.py --budget 32
+
+# Also ingest secure.log beside each trace.jsonl. Missing optional secure logs
+# are tolerated; records can require one with "secure_log": true.
+python3 tools/discover_corpus.py --budget 32 --secure-logs
+
+# Normalize one OP-TEE log independently for inspection or reuse.
+python3 tools/import_secure_trace.py RUN/secure.log /tmp/secure-events.jsonl
+
+# Rank still-unmodeled callsite shapes before adding the next observation rule.
+python3 tools/profile_secure_trace_gaps.py RUN/secure.log --limit 50
+
+# Extract a bounded context pack for the top-ranked history instead of sending
+# the entire discovery graph to an AI.
+python3 tools/query_discovery.py artifacts/discovery-v0.3.json \
+  --rank 1 --max-features 96 --max-edges 128 --max-elements 32 \
+  --output /tmp/teeweaver-ai-context.json
+
+# Simulate online corpus retention with a bounded-memory streaming index.
+python3 tools/update_discovery_index.py
+
+# Resume the index across campaigns without re-retaining identical histories.
+python3 tools/update_discovery_index.py \
+  --input-index artifacts/discovery-index-v0.3.json \
+  --output-index /tmp/discovery-index-next.json \
+  --decisions /tmp/discovery-decisions-next.json
 ```
 
 Each run creates a self-contained result directory containing Normal/Secure
@@ -162,7 +210,7 @@ oracles, instrumentation, tests, and research protocol:
 
 ```sh
 python3 tools/freeze_artifact.py
-python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.2.0-alpha.json
+python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.3.0-alpha.json
 ```
 
 Validate the adopted result set and hash every evidence file separately from
@@ -183,7 +231,10 @@ python3 tools/promote_candidate.py RUN/summary.json evidence.json
 ## Repository map
 
 - `src/teeweaver/`: trace, state model, security oracles, PCT scheduler,
-  delta minimizer, and the nine-class dynamic element miner.
+  delta minimizer, nine-class element miner, semantic discovery engine, and
+  streaming novelty index. `secure_trace.py` normalizes stable OP-TEE log
+  records and explicit `TWTRACE` markers; `query.py` emits bounded AI context
+  packs.
 - `instrumentation/supplicant_preload/`: no-secure-world-modification RPC/SHM
   and FF-A observation plus controlled Normal-World faults.
 - `instrumentation/ffa_probe/`: independent Normal-World actor for existing
@@ -207,6 +258,9 @@ python3 tools/promote_candidate.py RUN/summary.json evidence.json
   debugging runs for the frozen prototype.
 - `docs/ELEMENT_MINING.md`: element schema, mining rules, confidence limits,
   and AI consumption contract.
+- `docs/DISCOVERY_ENGINE.md`: v0.3 semantic features, novelty queue,
+  differential mining, streaming retention, and the AI/tool responsibility
+  boundary.
 - `docs/RESULTS_V0_2.md`: sanitized public-preview validation scope.
 - `evaluation/known_cases.json`: quarantined known OP-TEE cases used only after
   a framework version is frozen; generation and scheduling code never imports
