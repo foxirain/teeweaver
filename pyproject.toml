@@ -19,6 +19,11 @@ classifiers = [
   "Topic :: Security",
 ]
 
+[project.urls]
+Homepage = "https://github.com/foxirain/teeweaver"
+Repository = "https://github.com/foxirain/teeweaver"
+Issues = "https://github.com/foxirain/teeweaver/issues"
+
 [project.scripts]
 teeweaver = "teeweaver.cli:main"
 
