@@ -321,6 +321,7 @@ def assess_run(
 
     violations = observed.get("violations", ())
     stimuli = observed.get("stimuli", ())
+    target_symptoms = observed.get("target_symptoms", ())
     run_error = observed.get("run_error")
     if violations:
         reasons = [f"{len(violations)} accepted invariant violation(s)"]
@@ -332,6 +333,21 @@ def assess_run(
             new_states,
             new_state_count,
             status_delta,
+        )
+    if target_symptoms:
+        codes = sorted({
+            str(item.get("code", "TARGET_FAILURE"))
+            for item in target_symptoms
+        })
+        reasons = [
+            "target emitted crash/panic evidence: " + ", ".join(codes),
+            "symptom requires invariant, reachability, and impact validation",
+        ]
+        if run_error:
+            reasons.append(f"runner also reported: {run_error}")
+        return RunAssessment(
+            "target-symptom", tuple(reasons), new_states,
+            new_state_count, status_delta,
         )
     if status_delta:
         reasons = ["workload status differs from clean control"]

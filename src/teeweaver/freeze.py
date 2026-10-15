@@ -42,6 +42,7 @@ EXCLUDED_NAMES = {
     "test_driver",
     "storage_probe",
     "ffa_probe",
+    "ffa_sequence_probe",
 }
 
 

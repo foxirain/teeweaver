@@ -10,6 +10,7 @@ from .elements import load_corpus, mine_elements
 from .minimize import ddmin
 from .oracles import check
 from .query import select_context
+from .state_machine import coverage_report, proposal_report
 from .trace import read_jsonl, write_jsonl
 
 
@@ -153,6 +154,24 @@ def command_query(
     return 0
 
 
+def command_synthesize(
+    source: str, *, budget: int, saturation_window: int,
+) -> int:
+    """Project one history into boundary coverage and experiment proposals."""
+
+    events = tuple(read_jsonl(source))
+    report = {
+        "schema": "teeweaver-state-machine-plan-v1",
+        "source_trace": str(Path(source)),
+        "coverage": coverage_report(
+            [events], saturation_window=saturation_window
+        ),
+        "experiments": proposal_report([events], budget=budget),
+    }
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="teeweaver")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -194,6 +213,18 @@ def main() -> None:
     query_parser.add_argument("--max-edges", type=int, default=128)
     query_parser.add_argument("--max-elements", type=int, default=32)
     query_parser.add_argument("--output")
+    synthesize_parser = subparsers.add_parser(
+        "synthesize",
+        help=(
+            "derive normalized boundary coverage and state-machine "
+            "experiments from one trace"
+        ),
+    )
+    synthesize_parser.add_argument("trace")
+    synthesize_parser.add_argument("--budget", type=int, default=64)
+    synthesize_parser.add_argument(
+        "--saturation-window", type=int, default=5
+    )
     args = parser.parse_args()
     if args.command == "check":
         raise SystemExit(command_check(args.trace))
@@ -207,6 +238,15 @@ def main() -> None:
         raise SystemExit(command_discover(
             args.project, args.corpus, args.output, args.markdown, args.budget,
             args.secure_logs,
+        ))
+    if args.command == "synthesize":
+        if args.budget < 1:
+            parser.error("--budget must be positive")
+        if args.saturation_window < 1:
+            parser.error("--saturation-window must be positive")
+        raise SystemExit(command_synthesize(
+            args.trace, budget=args.budget,
+            saturation_window=args.saturation_window,
         ))
     try:
         raise SystemExit(command_query(

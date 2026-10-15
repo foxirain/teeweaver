@@ -7,7 +7,16 @@ dist/
 *.egg-info/
 results/
 instrumentation/ffa_probe/ffa_probe
+instrumentation/ffa_sequence_probe/ffa_sequence_probe
 instrumentation/storage_probe/storage_probe
 instrumentation/supplicant_preload/host-libteeweaver.so
 instrumentation/supplicant_preload/libteeweaver.so
 instrumentation/supplicant_preload/test_driver
+*.o
+*.ko
+*.a
+*.elf
+*.dmp
+.*.cmd
+Module.symvers
+modules.order

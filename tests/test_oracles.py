@@ -362,6 +362,20 @@ class OracleTests(unittest.TestCase):
         self.assertEqual("runner-failure", result.classification)
         self.assertEqual({}, result.status_delta)
 
+    def test_target_panic_outranks_runner_timeout_but_is_not_violation(self):
+        baseline = {"semantic_state_ids": ["a"], "statuses": {"test": "0"}}
+        observed = {
+            "semantic_state_ids": ["b"],
+            "statuses": {},
+            "stimuli": [],
+            "violations": [],
+            "target_symptoms": [{"code": "SECURE_WORLD_DATA_ABORT"}],
+            "run_error": "TimeoutError: target stopped responding",
+        }
+        result = assess_run(baseline, observed, process_returncode=1)
+        self.assertEqual("target-symptom", result.classification)
+        self.assertIn("impact validation", " ".join(result.reasons))
+
     def test_freeze_is_advisory_blind_and_verifies_current_tree(self):
         project = Path(__file__).parents[1]
         manifest = build_manifest(project, label="unit-test")
@@ -370,6 +384,9 @@ class OracleTests(unittest.TestCase):
         self.assertNotIn("results", " ".join(files))
         self.assertNotIn("instrumentation/storage_probe/storage_probe", files)
         self.assertNotIn("instrumentation/ffa_probe/ffa_probe", files)
+        self.assertNotIn(
+            "instrumentation/ffa_sequence_probe/ffa_sequence_probe", files
+        )
         self.assertEqual(
             manifest["aggregate_sha256"], aggregate_digest(files)
         )
@@ -381,7 +398,10 @@ class OracleTests(unittest.TestCase):
             project / "src/teeweaver/campaign.py",
             project / "src/teeweaver/scheduler.py",
             project / "src/teeweaver/oracles.py",
+            project / "src/teeweaver/state_machine.py",
             project / "tools/run_campaign.py",
+            project / "tools/plan_state_machine.py",
+            project / "tools/materialize_ffa_sequence.py",
         ]
         forbidden = "known" + "_cases"
         for path in inspected:

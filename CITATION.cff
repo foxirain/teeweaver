@@ -1,12 +1,12 @@
 cff-version: 1.2.0
 message: "If you use TEEWeaver in research, please cite this software."
-title: "TEEWeaver: Dynamic Semantic-Element Mining for OP-TEE"
+title: "TEEWeaver: Boundary-Guided Dynamic State-Machine Discovery for OP-TEE"
 type: software
 authors:
   - family-names: Ha
     given-names: Taegu
-version: 0.3.0-alpha
-date-released: 2026-09-26
+version: 0.4.0-alpha
+date-released: 2026-10-16
 license: BSD-3-Clause
 repository-code: "https://github.com/foxirain/teeweaver"
 url: "https://github.com/foxirain/teeweaver"

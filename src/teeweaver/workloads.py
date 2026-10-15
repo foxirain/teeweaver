@@ -53,7 +53,7 @@ def load_workloads(path: Path) -> Mapping[str, Workload]:
                 raise ValueError(f"workload {name!r} has duplicate label {label!r}")
             labels.add(label)
             program = str(test.get("program", "xtest"))
-            if program not in {"xtest", "ffa_probe"}:
+            if program not in {"xtest", "ffa_probe", "ffa_sequence_probe"}:
                 raise ValueError(
                     f"workload {name!r} has unsupported program {program!r}"
                 )

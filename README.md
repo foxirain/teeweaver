@@ -45,10 +45,27 @@ refcount, and SP identity/lifetime observations without first patching Secure
 World. Normal- and Secure-World streams remain separate ordering domains:
 TEEWeaver never invents a total order between logs that lack a shared clock.
 
+Version 0.4 alpha adds a boundary-guided state-machine layer without removing
+the v0.3 discovery, query, streaming-index, or secure-trace interfaces. It
+projects histories into identity-renaming-resistant boundary tuples, measures
+coverage saturation, filters recovered retry and mismatched-fault ordering
+noise, and synthesizes falsifiable cross-principal, cross-lifetime,
+failure-continuation, duplicate-terminal, reset, and ABA experiments. Every
+proposal remains explicitly marked as not being a vulnerability finding.
+
+Supported FF-A proposals can be materialized as data-driven sequence plans for
+the generic `arm_ffa_user` probe. Target crash evidence is retained separately
+from host-runner timeouts, and campaigns may stop on either semantic-novelty
+stagnation or normalized boundary-coverage plateaus.
+
 ## Validated status
 
 The current prototype has been exercised end to end on the pinned upstream
 QEMU-v8 environment with four secure-world cores:
+
+- 88 dependency-free tests cover the retained v0.3 interfaces and the v0.4
+  boundary model, synthesis queue, materializer, target-symptom separation,
+  retry-noise filtering, and paired-control contracts;
 
 - clean control: `xtest 1001` completed 624 subtests with zero failures;
   15,270 events produced no attack stimuli and no invariant violations;
@@ -121,6 +138,8 @@ python3 -m unittest discover -s tests -v
 PYTHONPATH=src python3 -m teeweaver.cli check scenarios/clean_rpc.jsonl
 PYTHONPATH=src python3 -m teeweaver.cli check scenarios/cross_bound_rpc.jsonl
 PYTHONPATH=src python3 -m teeweaver.cli minimize scenarios/cross_bound_rpc.jsonl /tmp/minimized.jsonl
+PYTHONPATH=src python3 -m teeweaver.cli synthesize \
+  scenarios/shm_aba.jsonl --budget 16 > /tmp/state-machine-plan.json
 ```
 
 Build the real AArch64 supplicant interposer against the existing QEMU-v8
@@ -130,6 +149,8 @@ Buildroot toolchain:
 make -C instrumentation/supplicant_preload \
   OPTEE_ROOT=/path/to/optee-qemu-v8
 make -C instrumentation/ffa_probe \
+  OPTEE_ROOT=/path/to/optee-qemu-v8
+make -C instrumentation/ffa_sequence_probe \
   OPTEE_ROOT=/path/to/optee-qemu-v8
 ```
 
@@ -192,6 +213,23 @@ python3 tools/update_discovery_index.py \
   --input-index artifacts/discovery-index-v0.3.json \
   --output-index /tmp/discovery-index-next.json \
   --decisions /tmp/discovery-decisions-next.json
+
+# Build a boundary coverage report and experiment queue from the public corpus.
+python3 tools/plan_state_machine.py --budget 128 \
+  --output /tmp/state-machine-plan.json
+
+# Materialize a supported FF-A proposal. Endpoint UUIDs must identify existing
+# SPs in the target configuration.
+python3 tools/materialize_ffa_sequence.py \
+  /tmp/state-machine-plan.json PROPOSAL_ID \
+  --endpoint A=11111111-2222-3333-4444-555555555555 \
+  --endpoint B=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee \
+  --output /tmp/sequence.plan
+
+# Execute the generated plan using the generic probe.
+PYTHONPATH=src python3 tools/run_qemu_experiment.py \
+  --optee-root /path/to/optee-qemu-v8 \
+  --sequence-plan /tmp/sequence.plan
 ```
 
 Each run creates a self-contained result directory containing Normal/Secure
@@ -210,7 +248,7 @@ oracles, instrumentation, tests, and research protocol:
 
 ```sh
 python3 tools/freeze_artifact.py
-python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.3.0-alpha.json
+python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.4.0-alpha.json
 ```
 
 Validate the adopted result set and hash every evidence file separately from
@@ -234,11 +272,16 @@ python3 tools/promote_candidate.py RUN/summary.json evidence.json
   delta minimizer, nine-class element miner, semantic discovery engine, and
   streaming novelty index. `secure_trace.py` normalizes stable OP-TEE log
   records and explicit `TWTRACE` markers; `query.py` emits bounded AI context
-  packs.
+  packs; `state_machine.py` provides normalized boundary coverage, saturation,
+  and evidence-derived experiment synthesis.
 - `instrumentation/supplicant_preload/`: no-secure-world-modification RPC/SHM
   and FF-A observation plus controlled Normal-World faults.
 - `instrumentation/ffa_probe/`: independent Normal-World actor for existing
   upstream FF-A test SPs; it makes no Secure-World modification.
+- `instrumentation/ffa_sequence_probe/`: generic, line-oriented executor that
+  turns supported semantic proposals into runtime FF-A histories without
+  embedding advisory names, source locations, or an expected vulnerable
+  result.
 - `scenarios/`: small positive and negative histories used to test the oracles,
   plus the manifest for the bundled synthetic element-mining corpus.
 - `examples/public-corpus/`: non-product synthetic histories exercising all
@@ -261,6 +304,8 @@ python3 tools/promote_candidate.py RUN/summary.json evidence.json
 - `docs/DISCOVERY_ENGINE.md`: v0.3 semantic features, novelty queue,
   differential mining, streaming retention, and the AI/tool responsibility
   boundary.
+- `docs/STATE_MACHINE_ENGINE.md`: v0.4 boundary tuples, saturation, noise
+  filtering, proposal synthesis, materialization, and falsification contract.
 - `docs/RESULTS_V0_2.md`: sanitized public-preview validation scope.
 - `evaluation/known_cases.json`: quarantined known OP-TEE cases used only after
   a framework version is frozen; generation and scheduling code never imports

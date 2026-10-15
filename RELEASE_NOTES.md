@@ -1,64 +1,55 @@
-# TEEWeaver v0.3.0-alpha
+# TEEWeaver v0.4.0-alpha
 
-TEEWeaver v0.3.0-alpha is a research preview of a dynamic semantic discovery
-engine for OP-TEE. It turns multi-run Normal- and Secure-World observations
-into bounded, evidence-backed experiment targets without assigning CWE, CVSS,
-exploitability, or vulnerability verdicts.
+TEEWeaver v0.4.0-alpha closes the loop between observed OP-TEE histories and
+adversarial experiment design. It retains the v0.3 discovery bundle, bounded
+query, streaming novelty index, and secure-log normalization interfaces while
+adding a normalized security-boundary model and falsifiable experiment queue.
 
 ## Highlights
 
-- Extract identity-independent semantic features across operations,
-  principals, endpoints, sessions, resource lifetimes, values, and reset
-  epochs.
-- Rank histories by marginal and relational novelty while retaining clean
-  controls as comparison anchors.
-- Mine pairwise contrasts, outcome associations, feature co-occurrences, and
-  typed semantic graphs across a corpus.
-- Maintain a resumable streaming discovery index with explicit retain and
-  discard decisions for long-running QEMU campaigns.
-- Produce bounded, provenance-hashed AI context packs for a selected run,
-  feature, contrast, or queue rank.
-- Normalize existing OP-TEE `secure.log` records and strict `TWTRACE` JSON
-  markers with exact source-line, parser-rule, and confidence provenance.
-- Keep Normal- and Secure-World observations in independent ordering domains
-  unless the trace provides a valid shared ordering relation.
-- Recover loader-store fallback, mapping aliases, call completion, refcount
-  transitions, FF-A resurrection, terminal follow-up, and secure-thread wait
-  transitions.
-- Profile unmodeled Secure-World callsite shapes so observation coverage can be
-  expanded without selecting a known vulnerability as the target.
+- Project events into identity-renaming-resistant boundary tuples spanning
+  protocol, operation, principal relation, lifecycle, generation,
+  authorization, phase, fault family, and outcome.
+- Measure boundary coverage and trailing-window saturation without treating
+  PID, handle, or absolute generation churn as progress.
+- Synthesize cross-principal, cross-lifetime, failure-continuation,
+  duplicate-terminal, reset, and ABA experiments from observed evidence.
+- Attach required controls, expected secure behavior, falsifiers, source
+  evidence, and `not_a_finding: true` to every proposal.
+- Prioritize uncovered security-frontier targets and expose adapter gaps
+  separately from executable proposals.
+- Filter recovered retry noise, mismatched-fault ordering comparisons, and
+  state-hash differences that do not change normalized boundary coverage.
+- Materialize supported FF-A proposals as line-oriented plans for a generic
+  `arm_ffa_user` sequence probe; unsupported families fail closed.
+- Preserve explicit target panic and abort evidence separately from runner
+  timeouts without promoting either to a vulnerability verdict.
+- Retain v0.3 semantic discovery and add optional boundary-plateau stopping to
+  the existing QEMU campaign driver.
 
 ## Validation
 
-- 71 dependency-free unit tests cover the discovery engine, streaming index,
-  secure-log normalization, ordering-domain isolation, existing invariant
-  oracles, and legacy element mining.
-- The bundled seven-run public corpus produces 72 semantic features, three
-  contrasts, and ten legacy dynamic elements without candidate-specific or
-  embargoed evidence.
-- The release workflow compiles all Python sources, builds both source and
-  wheel distributions, installs the wheel, exercises the command-line entry
-  point, runs the public discovery demonstrations, and verifies a source
-  freeze.
-- The framework has also been exercised against the pinned upstream OP-TEE
-  QEMU-v8 environment. Those experiments include clean controls, defensive
-  negative controls, FF-A memory lifecycles, concurrent TA activity, and reset
-  persistence checks.
+- 88 dependency-free unit tests cover both the retained v0.3 interfaces and
+  the v0.4 boundary model, synthesis queue, materializer, noise filters, and
+  target-symptom classification.
+- CI compiles all Python sources, builds and installs the wheel, exercises the
+  public v0.3 discovery pipeline, runs v0.4 trace and corpus synthesis demos,
+  validates public evidence, and verifies a source freeze.
+- The bundled public corpus and histories are synthetic or previously public
+  controls. Candidate-specific traces, reports, and coordinated-disclosure
+  material are excluded.
 
 ## Scope and limitations
 
-This release does not claim a new OP-TEE vulnerability. A high-ranked history
-or extracted relationship is an experiment priority, not a security finding.
-Promotion still requires a reproducible invariant violation, causal controls,
-affected supported configurations, and independent review.
+TEEWeaver proposals are experiment requests, not security findings. Boundary
+coverage measures only the supplied workload, adapter, and observation model;
+saturation does not imply that a target is secure. Promotion still requires a
+reproducible invariant violation, causal controls, supported reachability,
+concrete security impact, and independent review.
 
-The native secure-log parser intentionally recognizes only modeled record
-shapes. Unparsed lines remain visible through the gap profiler and are not
-treated as irrelevant. Cross-stream temporal relationships are not inferred
-from file position or unrelated timestamps.
-
-Candidate-specific traces and private research results are excluded from the
-release artifacts.
+The FF-A materializer supports only proposal families that the public sequence
+adapter can encode faithfully. Other proposals remain in the adapter backlog
+until a protocol-specific executor and control are implemented.
 
 ## Compatibility
 
@@ -66,5 +57,5 @@ release artifacts.
 - OP-TEE QEMU-v8 for the documented end-to-end environment
 - No runtime Python dependencies
 
-The Python package version is `0.3.0a1`; the corresponding repository release
-tag is `v0.3.0-alpha`.
+The Python package version is `0.4.0a1`; the intended repository release tag
+is `v0.4.0-alpha`.

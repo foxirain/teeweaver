@@ -21,7 +21,7 @@ sys.path.insert(0, str(PROJECT / "src"))
 
 from teeweaver.oracles import evaluate  # noqa: E402
 from teeweaver.trace import read_jsonl  # noqa: E402
-from teeweaver.workloads import Workload, load_workloads  # noqa: E402
+from teeweaver.workloads import Workload, WorkloadTest, load_workloads  # noqa: E402
 
 
 WORKLOADS = load_workloads(PROJECT / "scenarios/workloads.json")
@@ -113,6 +113,43 @@ def sha256_file(path: Path) -> str | None:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def detect_target_symptoms(output: Path) -> list[dict[str, object]]:
+    """Preserve target crash evidence without classifying it as a finding."""
+
+    symptoms: list[dict[str, object]] = []
+    sources = (
+        ("secure.log", {
+            "Core data-abort": "SECURE_WORLD_DATA_ABORT",
+            "Panic '": "SECURE_WORLD_PANIC",
+        }),
+        ("normal.log", {
+            "Kernel panic - not syncing": "NORMAL_WORLD_KERNEL_PANIC",
+        }),
+    )
+    for filename, patterns in sources:
+        path = output / filename
+        if not path.is_file():
+            continue
+        lines = path.read_text(
+            encoding="utf-8", errors="replace"
+        ).splitlines()
+        for pattern, code in patterns.items():
+            matches = [
+                (index + 1, line.strip())
+                for index, line in enumerate(lines)
+                if pattern in line
+            ]
+            if matches:
+                symptoms.append({
+                    "code": code,
+                    "source": filename,
+                    "count": len(matches),
+                    "first_line": matches[0][0],
+                    "evidence": matches[0][1][:512],
+                })
+    return symptoms
 
 
 def core_count(root: Path) -> int:
@@ -248,6 +285,11 @@ def prepare_workload_programs(output: Path, workload: Workload) -> None:
         if not source.is_file():
             raise RuntimeError(f"build {source} before running this workload")
         shutil.copy2(source, output / "ffa_probe")
+    if any(test.program == "ffa_sequence_probe" for test in workload.tests):
+        source = PROJECT / "instrumentation/ffa_sequence_probe/ffa_sequence_probe"
+        if not source.is_file():
+            raise RuntimeError(f"build {source} before running this workload")
+        shutil.copy2(source, output / "ffa_sequence_probe")
 
 
 def capture_supplicant_layout(console: QemuConsole) -> None:
@@ -278,11 +320,18 @@ def run_workload(
         if test.program == "xtest":
             suite = f" -t {shlex.quote(test.suite)}" if test.suite else ""
             invocation = f"xtest{suite} {shlex.quote(test.test_id)}"
-        else:
+        elif test.program == "ffa_probe":
             invocation = " ".join(
                 ["/mnt/host/ffa_probe"]
                 + [shlex.quote(value) for value in test.arguments]
             )
+        elif test.program == "ffa_sequence_probe":
+            invocation = " ".join(
+                ["/mnt/host/ffa_sequence_probe"]
+                + [shlex.quote(value) for value in test.arguments]
+            )
+        else:
+            raise ValueError(f"unsupported workload program: {test.program}")
         commands.append(
             f"{environment} {invocation} "
             f">/mnt/host/xtest-{test.label}.log 2>&1; "
@@ -360,6 +409,7 @@ def summarize(
         "semantic_state_ids": state_ids,
         "statuses": statuses,
         "run_error": run_error,
+        "target_symptoms": detect_target_symptoms(output),
         "stimuli": [dataclasses.asdict(item) for item in stimuli],
         "violations": [dataclasses.asdict(item) for item in violations],
         "commits": {
@@ -386,6 +436,8 @@ def summarize(
             name: sha256_file(path)
             for name, path in {
                 "interposer": output / "libteeweaver.so",
+                "ffa_sequence_probe": output / "ffa_sequence_probe",
+                "sequence_plan": output / "sequence.plan",
                 "optee_config": output / "optee-conf.mk",
                 "bl1": root / "out/bin/bl1.bin",
                 "linux_image": root / "out/bin/Image",
@@ -432,15 +484,26 @@ def main() -> int:
         type=int,
         help="override workload timeout (useful for bounded nontermination probes)",
     )
+    parser.add_argument(
+        "--sequence-plan",
+        type=Path,
+        help=(
+            "run a generated FF-A sequence plan instead of a manifest workload"
+        ),
+    )
     args = parser.parse_args()
     root = args.optee_root.resolve()
+    sequence_plan = args.sequence_plan.resolve() if args.sequence_plan else None
+    if sequence_plan is not None and not sequence_plan.is_file():
+        parser.error(f"missing --sequence-plan: {sequence_plan}")
     library = PROJECT / "instrumentation/supplicant_preload/libteeweaver.so"
     if not library.exists():
         raise SystemExit(f"build {library} first")
+    run_name = "ffa-sequence" if args.sequence_plan else args.workload
     output = args.output
     if output is None:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        output = PROJECT / "results" / f"{stamp}-{args.workload}"
+        output = PROJECT / "results" / f"{stamp}-{run_name}"
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     if args.loader_debug:
@@ -449,7 +512,21 @@ def main() -> int:
     optee_conf = root / "optee_os/out/arm/conf.mk"
     if optee_conf.exists():
         shutil.copy2(optee_conf, output / "optee-conf.mk")
-    workload = WORKLOADS[args.workload]
+    if sequence_plan is not None:
+        shutil.copy2(sequence_plan, output / "sequence.plan")
+        workload = Workload(
+            "ffa-sequence",
+            "sequential",
+            180,
+            (WorkloadTest(
+                "sequence", None, "sequence", "ffa_sequence_probe",
+                ("/mnt/host/sequence.plan",),
+            ),),
+            True,
+            False,
+        )
+    else:
+        workload = WORKLOADS[args.workload]
     if args.timeout_override is not None:
         if args.timeout_override < 1:
             parser.error("--timeout-override must be positive")
@@ -462,7 +539,11 @@ def main() -> int:
     trace_path.chmod(0o666)
     cpus = core_count(root)
     if args.fault == "auto":
-        fault = "swap_pair:0" if args.workload == "load-ta-swap" else None
+        fault = (
+            "swap_pair:0"
+            if sequence_plan is None and args.workload == "load-ta-swap"
+            else None
+        )
     elif args.fault == "none":
         fault = None
     else:
@@ -489,7 +570,7 @@ def main() -> int:
     finally:
         console.stop()
         summarize(
-            root, output, args.workload, cpus, fault, args.client_trace,
+            root, output, run_name, cpus, fault, args.client_trace,
             workload.ffa_trace,
             workload.timeout,
             run_error

@@ -2,6 +2,28 @@
 
 All notable public changes are documented here.
 
+## 0.4.0-alpha — 2026-10-16
+
+- Add normalized security-boundary tuples that discard raw PID, handle, and
+  generation identities while preserving ownership, receiver, lifecycle,
+  authorization, phase, fault, and outcome relationships.
+- Add boundary coverage, dimension gaps, trailing-window saturation, and an
+  uncovered security-frontier model.
+- Add evidence-derived cross-principal, lifecycle, failure-continuation,
+  duplicate-terminal, reset, and ABA experiment synthesis with explicit
+  controls and falsifiers.
+- Add a generic FF-A sequence materializer and public `arm_ffa_user` executor;
+  unsupported proposal families fail closed.
+- Add target panic/abort evidence capture and classify it separately from
+  host-runner failures and accepted invariant violations.
+- Suppress recovered retry noise, differently faulted order comparisons, and
+  state aliases lacking a normalized boundary difference.
+- Preserve all v0.3 discovery, query, secure-trace, and streaming-index APIs;
+  expose v0.4 single-trace synthesis through `teeweaver synthesize`.
+- Retain semantic-novelty stopping and add optional normalized
+  boundary-plateau stopping to QEMU campaigns.
+- Expand the public regression suite from 71 to 88 tests.
+
 ## 0.3.0-alpha — 2026-09-26
 
 - Add identity-independent semantic feature extraction across operations,

@@ -25,7 +25,7 @@ jobs:
           python3 -m build
           python3 -m pip install --force-reinstall --no-deps dist/*.whl
           teeweaver --help
-          python3 -c 'import teeweaver; assert teeweaver.__version__ == "0.3.0a1"'
+          python3 -c 'import teeweaver; assert teeweaver.__version__ == "0.4.0a1"'
       - name: Run public element-mining demo
         run: python3 tools/mine_elements.py
       - name: Run semantic discovery and streaming index demos
@@ -34,9 +34,15 @@ jobs:
           python3 tools/update_discovery_index.py
           python3 tools/query_discovery.py artifacts/discovery-v0.3.json \
             --rank 1 --output artifacts/ai-context-v0.3.json
+      - name: Run boundary state-machine synthesis demo
+        run: |
+          teeweaver synthesize scenarios/shm_aba.jsonl --budget 16 \
+            > /tmp/state-machine-plan.json
+          python3 tools/plan_state_machine.py --budget 16 \
+            --output /tmp/corpus-state-machine-plan.json
       - name: Validate public evidence manifest
         run: python3 tools/build_evidence_manifest.py
       - name: Freeze and verify public source
         run: |
           python3 tools/freeze_artifact.py
-          python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.3.0-alpha.json
+          python3 tools/freeze_artifact.py --verify artifacts/freeze-v0.4.0-alpha.json

@@ -10,6 +10,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 from .events import Event
 from .secure_trace import read_secure_log
+from .state_machine import coverage_report, observe_boundaries, proposal_report
 from .trace import read_jsonl
 
 
@@ -33,15 +34,33 @@ class RunHistory:
             str(item.get("code")) for item in self.summary.get("violations", [])
             if isinstance(item, Mapping)
         ))
+        symptoms = tuple(sorted(
+            str(item.get("code"))
+            for item in self.summary.get("target_symptoms", [])
+            if isinstance(item, Mapping)
+        ))
         error = self.summary.get("run_error")
         error_kind = str(error).split(":", 1)[0] if error else None
-        return statuses, violations, error_kind
+        return statuses, violations, symptoms, error_kind
 
     @property
     def states(self) -> frozenset[str]:
         return frozenset(str(x) for x in self.summary.get(
             "semantic_state_ids", []
         ))
+
+
+_BOUNDARY_CACHE: dict[int, tuple[tuple[Event, ...], tuple[Any, ...]]] = {}
+
+
+def _observed_boundaries(run: RunHistory) -> tuple[Any, ...]:
+    key = id(run.events)
+    cached = _BOUNDARY_CACHE.get(key)
+    if cached is not None and cached[0] is run.events:
+        return cached[1]
+    observed = tuple(observe_boundaries(run.events))
+    _BOUNDARY_CACHE[key] = (run.events, observed)
+    return observed
 
 
 @dataclass(frozen=True, slots=True)
@@ -258,11 +277,17 @@ def mine_failure_residue(runs: Sequence[RunHistory]) -> list[Element]:
     cleanup_ops = {"reset", "ffa_relinquish", "ffa_reclaim", "shm_release",
                    "session_close", "operation_cancel"}
     for run in runs:
+        retry_noise = {
+            item.seq for item in _observed_boundaries(run)
+            if item.tuple.outcome == "retryable-failure"
+        }
         for index, failed in enumerate(run.events):
             failed_result = failed.get("ioctl_result")
             is_failure = (failed_result is not None and int(failed_result) < 0) \
                 or failed.op == "operation_fail"
             if not is_failure:
+                continue
+            if failed.seq in retry_noise:
                 continue
             obj = failed.get("object")
             receiver = failed.get("receiver")
@@ -302,6 +327,10 @@ def mine_failure_residue(runs: Sequence[RunHistory]) -> list[Element]:
 def mine_serialization_domains(runs: Sequence[RunHistory]) -> list[Element]:
     evidence: list[dict[str, Any]] = []
     for run in runs:
+        retry_noise = {
+            item.seq for item in _observed_boundaries(run)
+            if item.tuple.outcome == "retryable-failure"
+        }
         principals = {_principal(event) for event in run.events
                       if event.op.startswith("ffa_")}
         if len(principals) < 2:
@@ -309,6 +338,8 @@ def mine_serialization_domains(runs: Sequence[RunHistory]) -> list[Element]:
         calls = [event for event in run.events if event.op == "ffa_direct_message"]
         for failed in calls:
             if int(failed.get("ioctl_result", 0)) >= 0:
+                continue
+            if failed.seq in retry_noise:
                 continue
             for successful in calls:
                 if successful is failed or int(successful.get("ioctl_result", -1)) < 0:
@@ -372,8 +403,18 @@ def mine_non_commutative_pairs(runs: Sequence[RunHistory]) -> list[Element]:
                        if (right, left) in orders]
             if not forward or not reverse:
                 continue
-            differing = [(a, ap, b, bp) for a, ap in forward for b, bp in reverse
-                         if a.outcome != b.outcome]
+            def fault_profile(run: RunHistory) -> tuple[str, ...]:
+                return tuple(sorted({
+                    str(event.get("fault")) for event in run.events
+                    if event.get("fault") not in {None, "", "none"}
+                }))
+
+            differing = [
+                (a, ap, b, bp)
+                for a, ap in forward for b, bp in reverse
+                if a.outcome != b.outcome
+                and fault_profile(a) == fault_profile(b)
+            ]
             if not differing:
                 continue
             a, ap, b, bp = differing[0]
@@ -389,7 +430,7 @@ def mine_non_commutative_pairs(runs: Sequence[RunHistory]) -> list[Element]:
             candidates.append((support, _element(
                 "non-commutative-action-pair",
                 f"Order-sensitive candidate: {left} versus {right}",
-                min(82, 55 + support * 2), "medium",
+                min(72, 50 + support * 2), "medium",
                 f"Within corpus group {group!r}, both {left}→{right} and {right}→{left} "
                 "occur, and the observed order co-varies with at least one externally visible "
                 "outcome. This nominates a commutativity experiment; it does not yet establish "
@@ -492,6 +533,103 @@ def mine_non_terminating_transitions(runs: Sequence[RunHistory]) -> list[Element
     return elements
 
 
+def mine_target_crashes(runs: Sequence[RunHistory]) -> list[Element]:
+    """Preserve target-side crash evidence separately from runner failures."""
+
+    buckets: dict[
+        tuple[str, str, str],
+        list[tuple[RunHistory, Event, Mapping[str, Any]]],
+    ] = defaultdict(list)
+    for run in runs:
+        symptoms = [
+            item for item in run.summary.get("target_symptoms", ())
+            if isinstance(item, Mapping)
+        ]
+        if not symptoms:
+            continue
+        # Background RPC can be appended after an FF-A CPU abort. Prefer the
+        # unmatched pre-call marker over the chronologically final RPC event.
+        anchor = next(
+            (event for event in reversed(run.events)
+             if event.op == "ffa_call_issue"),
+            None,
+        )
+        if anchor is None:
+            anchor = next(
+                (event for event in reversed(run.events)
+                 if event.op in {"rpc_reply", "operation_issue",
+                                 "object_consume"}),
+                None,
+            )
+        if anchor is None:
+            continue
+        key = (
+            _action(anchor),
+            str(anchor.get("receiver", "unknown")),
+            str(symptoms[0].get("code", "TARGET_FAILURE")),
+        )
+        for symptom in symptoms:
+            buckets[key].append((run, anchor, symptom))
+
+    elements: list[Element] = []
+    for (action, receiver, code), observations in sorted(buckets.items()):
+        evidence: list[dict[str, Any]] = []
+        anchored_runs: set[str] = set()
+        for run, anchor, symptom in observations[:8]:
+            if run.label not in anchored_runs:
+                evidence.append(_event_ref(
+                    run, anchor,
+                    relationship="last-observed-boundary-transition",
+                ))
+                anchored_runs.add(run.label)
+            evidence.append({
+                "run": run.label,
+                "relationship": "target-crash-evidence",
+                "code": symptom.get("code"),
+                "source": symptom.get("source"),
+                "line": symptom.get("first_line"),
+                "evidence": symptom.get("evidence"),
+            })
+        supporting_runs = len({run.label for run, _, _ in observations})
+        groups = {run.group for run, _, _ in observations}
+        clean_controls = sum(
+            1 for run in runs
+            if run.group in groups
+            and not run.summary.get("target_symptoms")
+            and not run.summary.get("run_error")
+        )
+        elements.append(_element(
+            "target-crash-transition",
+            f"Target crash follows {action} at receiver {receiver}",
+            min(100, 94 + min(4, supporting_runs - 1)
+                + min(2, clean_controls)),
+            "high",
+            f"The target emitted {code} after {action}; the transition had no "
+            f"observed completion. {supporting_runs} run(s) carry crash "
+            f"evidence and {clean_controls} same-group clean control(s) do not.",
+            evidence,
+            "The pre-call marker and independent target log distinguish a target "
+            "abort from a host runner timeout.",
+            (
+                "Temporal adjacency alone does not prove the transition caused the crash.",
+                "A target crash does not by itself establish reachability or severity.",
+            ),
+            (
+                "Repeat against a fixed or guarded build and show the crash disappears.",
+                "Remove only the semantic mutation and reproduce a clean completion.",
+            ),
+            (
+                "Run an identity/context control with identical allocation and scheduling.",
+                "Minimize the plan and symbolize the recorded target stack.",
+            ),
+            (
+                "missing authorization before object lookup",
+                "null or stale object dereference in an ownership path",
+            ),
+        ))
+    return elements
+
+
 def mine_state_aliases(runs: Sequence[RunHistory]) -> list[Element]:
     by_group_outcome: dict[tuple[str, tuple[Any, ...]], list[RunHistory]] = defaultdict(list)
     for run in runs:
@@ -501,6 +639,17 @@ def mine_state_aliases(runs: Sequence[RunHistory]) -> list[Element]:
     for (group, outcome), members in by_group_outcome.items():
         for index, left in enumerate(members):
             for right in members[index + 1:]:
+                left_boundaries = {
+                    item.tuple.signature()
+                    for item in _observed_boundaries(left)
+                }
+                right_boundaries = {
+                    item.tuple.signature()
+                    for item in _observed_boundaries(right)
+                }
+                boundary_delta = len(left_boundaries ^ right_boundaries)
+                if boundary_delta == 0:
+                    continue
                 union = left.states | right.states
                 if not union:
                     continue
@@ -522,9 +671,11 @@ def mine_state_aliases(runs: Sequence[RunHistory]) -> list[Element]:
                 })
                 candidates.append((similarity, _element(
                     "state-aliasing", "Same visible result masks different internal histories",
-                    min(90, 65 + min(unique, 25)), "high" if similarity < 0.5 else "medium",
+                    min(70, 50 + min(unique, 20)), "medium",
                     f"Two runs in group {group!r} have the same status/violation outcome but "
-                    f"their semantic-state sets differ by {unique} states.",
+                    f"their semantic-state sets differ by {unique} states and their "
+                    f"normalized security-boundary coverage differs by "
+                    f"{boundary_delta} tuple(s).",
                     evidence,
                     "The alias is discovered by comparing histories that collapse to the same exit status.",
                     ("Semantic-state coverage may include benign scheduling variation.",),
@@ -557,6 +708,7 @@ def mine_elements(runs: Sequence[RunHistory]) -> list[Element]:
         mine_hidden_global_resources,
         mine_ownership_transfer,
         mine_aba_cycles,
+        mine_target_crashes,
         mine_state_aliases,
     )
     ordered_miners = (
@@ -716,8 +868,11 @@ def relation_graph(runs: Sequence[RunHistory], elements: Sequence[Element]) -> d
 
 def build_report(runs: Sequence[RunHistory], elements: Sequence[Element],
                  *, spec: str) -> dict[str, Any]:
+    coverage = coverage_report(runs)
+    proposals = proposal_report(runs, coverage=coverage)
+    noisy_kinds = {"non-commutative-action-pair", "state-aliasing"}
     return {
-        "schema": "teeweaver-elements-v1",
+        "schema": "teeweaver-elements-v2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "meaning": (
             "Elements are evidence-backed dynamic facts or hypotheses for downstream AI. "
@@ -736,8 +891,23 @@ def build_report(runs: Sequence[RunHistory], elements: Sequence[Element],
             "groups": dict(sorted(Counter(run.group for run in runs).items())),
         },
         "element_counts": dict(sorted(Counter(item.kind for item in elements).items())),
+        "triage_summary": {
+            "boundary_first": sum(
+                item.kind not in noisy_kinds for item in elements
+            ),
+            "schedule_sensitive": sum(
+                item.kind in noisy_kinds for item in elements
+            ),
+            "policy": (
+                "Boundary/lifetime proposals outrank raw order or state-set "
+                "divergence. Recovered retries and differently faulted AB/BA "
+                "runs are suppressed before element ranking."
+            ),
+        },
         "elements": [item.as_dict() for item in elements],
         "relation_graph": relation_graph(runs, elements),
+        "boundary_coverage": coverage,
+        "experiment_proposals": proposals,
     }
 
 
@@ -747,6 +917,12 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"Corpus: {report['corpus_summary']['runs']} runs, "
         f"{report['corpus_summary']['events']} events. "
         "These are experiment-design elements, not vulnerability claims.", "",
+        f"Boundary coverage: "
+        f"{report.get('boundary_coverage', {}).get('unique_boundary_tuples', 0)} "
+        "normalized tuples. "
+        f"Generated proposals: "
+        f"{len(report.get('experiment_proposals', {}).get('proposals', []))}.",
+        "",
     ]
     for item in report["elements"]:
         lines.extend((

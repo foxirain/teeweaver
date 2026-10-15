@@ -17,6 +17,7 @@ from teeweaver.campaign import assess_run, plan_faults, plan_ffa_faults  # noqa:
 from teeweaver.discovery import profile_runs  # noqa: E402
 from teeweaver.discovery_index import NoveltyIndex  # noqa: E402
 from teeweaver.elements import RunHistory  # noqa: E402
+from teeweaver.state_machine import observe_boundaries  # noqa: E402
 from teeweaver.trace import read_jsonl  # noqa: E402
 from teeweaver.workloads import load_workloads  # noqa: E402
 
@@ -126,6 +127,13 @@ def main() -> int:
             "zero disables early stopping"
         ),
     )
+    parser.add_argument(
+        "--boundary-plateau", type=int, default=0,
+        help=(
+            "stop after this many consecutive fault runs add no normalized "
+            "security-boundary tuple; zero disables this stop condition"
+        ),
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
@@ -141,6 +149,8 @@ def main() -> int:
         parser.error("--baseline-runs must be positive")
     if args.novelty_stagnation < 0:
         parser.error("--novelty-stagnation cannot be negative")
+    if args.boundary_plateau < 0:
+        parser.error("--boundary-plateau cannot be negative")
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     campaign_dir = (args.output or PROJECT / "results" / f"campaign-{stamp}").resolve()
     campaign_dir.mkdir(parents=True, exist_ok=False)
@@ -246,6 +256,14 @@ def main() -> int:
         }
     )
     trace = read_jsonl(baseline_dirs[0] / "trace.jsonl")
+    boundary_seen: set[str] = set()
+    for baseline_dir in baseline_dirs:
+        baseline_trace = baseline_dir / "trace.jsonl"
+        if baseline_trace.is_file():
+            boundary_seen.update(
+                item.tuple.signature()
+                for item in observe_boundaries(read_jsonl(baseline_trace))
+            )
     workload = WORKLOADS[args.workload]
     if workload.ffa_trace:
         surfaces, plans = plan_ffa_faults(
@@ -259,6 +277,7 @@ def main() -> int:
         "seed": args.seed,
         "budget": args.budget,
         "baseline_runs": args.baseline_runs,
+        "boundary_plateau": args.boundary_plateau,
         "derivation": derivation,
         "surface": [dataclasses.asdict(item) for item in surfaces],
         "faults": [item.as_dict() for item in plans],
@@ -267,7 +286,9 @@ def main() -> int:
 
     results: list[dict[str, Any]] = []
     stagnant_runs = 0
+    boundary_stagnant_runs = 0
     stopped_early = False
+    stop_reason: str | None = None
     for index, plan in enumerate(plans, 1):
         run_dir = campaign_dir / f"run-{index:03d}"
         print(f"[{index}/{len(plans)}] {plan.rule}", flush=True)
@@ -280,6 +301,19 @@ def main() -> int:
         assessment = assess_run(
             baseline, observed, process_returncode=returncode
         )
+        run_boundaries: set[str] = set()
+        trace_path = run_dir / "trace.jsonl"
+        if trace_path.is_file():
+            run_boundaries = {
+                item.tuple.signature()
+                for item in observe_boundaries(read_jsonl(trace_path))
+            }
+        new_boundaries = run_boundaries - boundary_seen
+        boundary_seen |= run_boundaries
+        if new_boundaries:
+            boundary_stagnant_runs = 0
+        else:
+            boundary_stagnant_runs += 1
         result = {
             "index": index,
             "fault": plan.as_dict(),
@@ -289,6 +323,9 @@ def main() -> int:
             "event_count": observed.get("events") if observed else None,
             "stimulus_count": len(observed.get("stimuli", ())) if observed else None,
             "violation_count": len(observed.get("violations", ())) if observed else None,
+            "boundary_tuples": len(run_boundaries),
+            "new_boundary_tuples": len(new_boundaries),
+            "boundary_plateau_streak": boundary_stagnant_runs,
         }
         if observed is not None:
             profile = profile_result(
@@ -311,17 +348,30 @@ def main() -> int:
                     stagnant_runs = 0
         results.append(result)
         write_json(run_dir / "assessment.json", result)
-        print(f"    => {assessment.classification}", flush=True)
+        print(
+            f"    => {assessment.classification}; "
+            f"boundary-new={len(new_boundaries)}",
+            flush=True,
+        )
         if (
             args.novelty_stagnation
             and stagnant_runs >= args.novelty_stagnation
         ):
-            print(
-                f"semantic discovery saturated for {stagnant_runs} consecutive "
-                "runs; stopping by --novelty-stagnation",
-                flush=True,
+            stop_reason = (
+                f"semantic novelty saturated for {stagnant_runs} consecutive runs"
             )
             stopped_early = True
+        elif (
+            args.boundary_plateau
+            and boundary_stagnant_runs >= args.boundary_plateau
+        ):
+            stop_reason = (
+                "normalized boundary coverage plateaued for "
+                f"{boundary_stagnant_runs} consecutive runs"
+            )
+            stopped_early = True
+        if stopped_early:
+            print(f"adaptive stop: {stop_reason}", flush=True)
             break
 
     counts: dict[str, int] = {}
@@ -330,11 +380,13 @@ def main() -> int:
         counts[classification] = counts.get(classification, 0) + 1
     campaign = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "complete-early-novelty-saturation" if stopped_early else "complete",
+        "status": "complete-early-adaptive-stop" if stopped_early else "complete",
         "workload": args.workload,
         "seed": args.seed,
         "budget": args.budget,
         "executed": len(results),
+        "stop_reason": stop_reason,
+        "boundary_tuple_union": len(boundary_seen),
         "baseline": {
             "result_dirs": [path.name for path in baseline_dirs],
             "events_per_run": [item.get("events") for item in baselines],
@@ -348,6 +400,7 @@ def main() -> int:
             "index": "discovery-index.json",
             "early_stop_threshold": args.novelty_stagnation,
             "stopped_early": stopped_early,
+            "boundary_plateau_threshold": args.boundary_plateau,
         },
         "results": results,
     }

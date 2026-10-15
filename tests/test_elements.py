@@ -15,6 +15,7 @@ from teeweaver.elements import (
     mine_reset_survivors,
     mine_serialization_domains,
     mine_state_aliases,
+    mine_target_crashes,
 )
 from teeweaver.events import Event
 
@@ -108,9 +109,66 @@ class ElementMinerTests(unittest.TestCase):
                          "non-terminating-transition")
 
     def test_state_aliasing(self):
-        left = run("left", [], statuses={"t": "0"}, states=["a", "b", "c"])
-        right = run("right", [], statuses={"t": "0"}, states=["x", "y", "z"])
+        left = run(
+            "left", [event(1, "rpc_issue", request="1", func=2)],
+            statuses={"t": "0"}, states=["a", "b", "c"],
+        )
+        right = run(
+            "right", [event(1, "ffa_share", object="h", generation=1,
+                              owner="normal-world", receiver="32770")],
+            statuses={"t": "0"}, states=["x", "y", "z"],
+        )
         self.assert_kind(mine_state_aliases([left, right]), "state-aliasing")
+
+    def test_state_aliasing_suppresses_identity_only_schedule_noise(self):
+        left = run(
+            "left", [event(1, "rpc_issue", request="1", func=2)],
+            statuses={"t": "0"}, states=["a", "b", "c"],
+        )
+        right = run(
+            "right", [event(1, "rpc_issue", request="999", func=2)],
+            statuses={"t": "0"}, states=["x", "y", "z"],
+        )
+        self.assertEqual([], mine_state_aliases([left, right]))
+
+    def test_target_crash_is_preserved_separately_from_timeout(self):
+        crashing = RunHistory(
+            "crash", "treatment", "g", "crash",
+            (event(1, "ffa_call_issue", action=5, receiver="32771",
+                   object="h", generation=1),),
+            {
+                "statuses": {}, "semantic_state_ids": [], "violations": [],
+                "run_error": "TimeoutError: target stopped",
+                "target_symptoms": [{
+                    "code": "SECURE_WORLD_DATA_ABORT",
+                    "source": "secure.log",
+                    "first_line": 10,
+                    "evidence": "Core data-abort",
+                }],
+            },
+        )
+        clean = run(
+            "clean", [event(1, "ffa_direct_message", action=5,
+                             receiver="32771", object="h", generation=1)],
+            group="g",
+        )
+        elements = mine_target_crashes([clean, crashing])
+        self.assert_kind(elements, "target-crash-transition")
+        self.assertIn("1 same-group clean control", elements[0].claim)
+
+    def test_order_pair_rejects_different_fault_profiles(self):
+        ab = run(
+            "ab", [event(1, "rpc_issue", actor="A", func=1, fault="delay"),
+                   event(2, "shm_release", actor="B")],
+            statuses={"t": "0"},
+        )
+        ba = run(
+            "ba", [event(1, "shm_release", actor="B"),
+                   event(2, "rpc_issue", actor="A", func=1,
+                         fault="force-ret")],
+            statuses={"t": "1"},
+        )
+        self.assertEqual([], mine_non_commutative_pairs([ab, ba]))
 
 
 if __name__ == "__main__":
